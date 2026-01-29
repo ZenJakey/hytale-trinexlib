@@ -1,0 +1,22 @@
+{
+    "Group": "Trinex",
+    "Name": "Library",
+    "Version": "0.0.2",
+    "Description": "Library for Trinex plugins.",
+    "Authors": [
+        {
+            "Name": "ZenJakey"
+        }
+    ],
+    "Website": "example.org",
+    "ServerVersion": "*",
+    "Dependencies": {
+        
+    },
+    "OptionalDependencies": {
+        
+    },
+    "DisabledByDefault": false,
+    "Main": "com.trinex.lib.TrinexLib",
+    "IncludesAssetPack": true
+}
