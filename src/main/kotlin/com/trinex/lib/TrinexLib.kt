@@ -8,16 +8,16 @@ import com.trinex.lib.messenger.Messenger
 class TrinexLib(init: JavaPluginInit) : JavaPlugin(init) {
 
     val messenger = Messenger("TrinexLib")
+    private val logger = HytaleLogger.forEnclosingClass()
 
     init {
-        LOGGER.atInfo().log("Hello from " + this.name + " version " + this.manifest.version)
+        logger.atInfo().log("Hello from " + this.name + " version " + this.manifest.version)
     }
 
     override fun setup() {
-        LOGGER.atInfo().log("Setting up plugin " + this.name)
+        logger.atInfo().log("Setting up plugin " + this.name)
     }
 
     companion object {
-        private val LOGGER = HytaleLogger.forEnclosingClass()
     }
 }
