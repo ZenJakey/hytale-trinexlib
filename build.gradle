@@ -7,6 +7,9 @@ plugins {
     id 'com.gradleup.shadow' version '9.3.1'
 }
 
+
+import groovy.json.JsonOutput
+import groovy.json.JsonSlurper
 import org.gradle.internal.os.OperatingSystem
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 
@@ -57,8 +60,8 @@ configurations {
 }
 dependencies {
     // Provided by the server at runtime; needed for compilation + IDE run only
-    compileOnly(files("$hytaleHome/install/$patchline/package/game/latest/Server/HytaleServer.jar"))
-    runtimeOnly(files("$hytaleHome/install/$patchline/package/game/latest/Server/HytaleServer.jar"))
+    compileOnly("com.hypixel.hytale:Server:+")
+    runtimeOnly("com.hypixel.hytale:Server:+")
     // Only put things you actually want inside the fat jar here:
     shade("org.jetbrains.kotlin:kotlin-stdlib-jdk8")
     // shade("group:artifact:version") ...
@@ -95,10 +98,10 @@ tasks.register('updatePluginManifest') {
         if (!manifestFile.exists()) {
             throw new GradleException("Could not find manifest.json at ${manifestFile.path}!")
         }
-        def manifestJson = new groovy.json.JsonSlurper().parseText(manifestFile.text)
+        def manifestJson = new JsonSlurper().parseText(manifestFile.text)
         manifestJson.Version = version
         manifestJson.IncludesAssetPack = includes_pack.toBoolean()
-        manifestFile.text = groovy.json.JsonOutput.prettyPrint(groovy.json.JsonOutput.toJson(manifestJson))
+        manifestFile.text = JsonOutput.prettyPrint(JsonOutput.toJson(manifestJson))
     }
 }
 
@@ -155,12 +158,20 @@ tasks.register('generateVSCodeLaunch') {
                         ]
                 ]
         ]
-        launchFile.text = groovy.json.JsonOutput.prettyPrint(groovy.json.JsonOutput.toJson(launchConfig))
+        launchFile.text = JsonOutput.prettyPrint(JsonOutput.toJson(launchConfig))
     }
 }
 repositories {
     mavenCentral()
     mavenLocal()
+    maven {
+        name = "hytale-release"
+        url = uri("https://maven.hytale.com/release")
+    }
+    maven {
+        name = "hytale-pre-release"
+        url = uri("https://maven.hytale.com/pre-release")
+    }
 }
 kotlin {
     jvmToolchain(25)
