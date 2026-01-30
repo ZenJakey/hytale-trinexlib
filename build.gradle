@@ -73,7 +73,6 @@ tasks.named("shadowJar") {
     minimize()
     exclude "META-INF/*.SF", "META-INF/*.DSA", "META-INF/*.RSA"
 }
-
 // Ensure `build` produces the shaded jar, and avoid producing a confusing thin jar.
 tasks.named('build') {
     dependsOn(tasks.named('shadowJar'))
@@ -183,21 +182,20 @@ kotlin {
 publishing {
     publications {
         mavenJava(MavenPublication) {
-            // Don't publish the thin jar coming from components.java
-            // (it won't exist because jar is disabled).
-            // from components.java
+            // from components.java  // keep this disabled if jar is disabled
 
-            // Publish the shaded jar as the main artifact:
             artifact(tasks.named("shadowJar"))
+            artifact(tasks.named("sourcesJar"))
+            artifact(tasks.named("javadocJar"))
 
-            // Keep these if you want custom coordinates:
             groupId = 'com.trinex'
-            artifactId = 'TrinexLib'
         }
     }
 }
 tasks.named("publishMavenJavaPublicationToMavenLocal") {
     dependsOn(tasks.named("shadowJar"))
+    dependsOn(tasks.named("sourcesJar"))
+    dependsOn(tasks.named("javadocJar"))
 }
 
 // Ensure Java compilation also targets 24 bytecode to match Kotlin
