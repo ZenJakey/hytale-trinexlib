@@ -172,12 +172,21 @@ kotlin {
 publishing {
     publications {
         mavenJava(MavenPublication) {
-            from components.java
-            // optionally:
+            // Don't publish the thin jar coming from components.java
+            // (it won't exist because jar is disabled).
+            // from components.java
+
+            // Publish the shaded jar as the main artifact:
+            artifact(tasks.named("shadowJar"))
+
+            // Keep these if you want custom coordinates:
             groupId = 'com.trinex'
             artifactId = 'TrinexLib'
         }
     }
+}
+tasks.named("publishMavenJavaPublicationToMavenLocal") {
+    dependsOn(tasks.named("shadowJar"))
 }
 
 // Ensure Java compilation also targets 24 bytecode to match Kotlin
