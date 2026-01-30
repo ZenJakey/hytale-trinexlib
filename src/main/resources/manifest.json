@@ -1,7 +1,7 @@
 {
     "Group": "Trinex",
     "Name": "Library",
-    "Version": "0.0.4",
+    "Version": "0.0.5",
     "Description": "Library for Trinex plugins.",
     "Authors": [
         {
