@@ -1,4 +1,4 @@
-package com.trinex.lib.api.device
+package com.trinex.lib.api.energy.device
 
 import com.hypixel.hytale.logger.HytaleLogger
 import com.trinex.lib.api.energy.EnergyDeviceType

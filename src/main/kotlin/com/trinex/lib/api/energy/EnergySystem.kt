@@ -10,7 +10,7 @@ import com.hypixel.hytale.server.core.modules.block.BlockModule
 import com.hypixel.hytale.server.core.universe.world.chunk.WorldChunk
 import com.hypixel.hytale.server.core.universe.world.storage.ChunkStore
 import com.trinex.lib.TrinexLib
-import com.trinex.lib.api.device.EnergyDeviceTypeRegistry
+import com.trinex.lib.api.energy.device.EnergyDeviceTypeRegistry
 import kotlin.math.min
 
 class EnergySystem : EntityTickingSystem<ChunkStore?>() {
@@ -59,10 +59,11 @@ class EnergySystem : EntityTickingSystem<ChunkStore?>() {
             if (groupRemaining <= 0) continue
 
             val count = endpoints.size
-            val endpointCaps = LongArray(count) { idx ->
-                val component = endpoints[idx].component
-                min(endpoints[idx].maxTransfer, endpointRemaining[component] ?: 0L)
-            }
+            val endpointCaps =
+                LongArray(count) { idx ->
+                    val component = endpoints[idx].component
+                    min(endpoints[idx].maxTransfer, endpointRemaining[component] ?: 0L)
+                }
             var idx = if (nextEndpointOffset >= count) nextEndpointOffset % count else nextEndpointOffset
             var sentAny = false
 
@@ -160,15 +161,15 @@ class EnergySystem : EntityTickingSystem<ChunkStore?>() {
         for (context in providerContexts) {
             if (context.remainingEnergy <= 0) continue
             val initialOutput = context.remainingEnergy
-                val consumerState =
-                    distributeAlongPaths(
-                        context.pathGroups,
-                        context.remainingEnergy,
-                        context.provider.consumerPathOffset,
-                        context.provider.consumerRoundRobinOffset,
-                        context.groupCapacities,
-                        consumerRemaining,
-                    ) { it.consumers }
+            val consumerState =
+                distributeAlongPaths(
+                    context.pathGroups,
+                    context.remainingEnergy,
+                    context.provider.consumerPathOffset,
+                    context.provider.consumerRoundRobinOffset,
+                    context.groupCapacities,
+                    consumerRemaining,
+                ) { it.consumers }
             context.remainingEnergy = consumerState.remainingEnergy
             context.provider.consumerPathOffset = consumerState.pathOffset
             context.provider.consumerRoundRobinOffset = consumerState.endpointOffset

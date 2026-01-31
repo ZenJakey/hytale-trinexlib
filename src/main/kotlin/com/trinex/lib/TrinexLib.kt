@@ -5,11 +5,11 @@ import com.hypixel.hytale.logger.HytaleLogger
 import com.hypixel.hytale.server.core.plugin.JavaPlugin
 import com.hypixel.hytale.server.core.plugin.JavaPluginInit
 import com.hypixel.hytale.server.core.universe.world.storage.ChunkStore
-import com.trinex.lib.api.device.DefaultDeviceType
-import com.trinex.lib.api.device.EnergyDeviceTypeRegistry
 import com.trinex.lib.api.energy.EnergyComponent
 import com.trinex.lib.api.energy.EnergyInitializer
 import com.trinex.lib.api.energy.EnergySystem
+import com.trinex.lib.api.energy.device.DefaultDeviceType
+import com.trinex.lib.api.energy.device.EnergyDeviceTypeRegistry
 import com.trinex.lib.messenger.Messenger
 
 class TrinexLib(

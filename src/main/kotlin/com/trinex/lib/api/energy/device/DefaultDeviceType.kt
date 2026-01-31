@@ -1,4 +1,4 @@
-package com.trinex.lib.api.device
+package com.trinex.lib.api.energy.device
 
 import com.hypixel.hytale.component.ArchetypeChunk
 import com.hypixel.hytale.component.CommandBuffer
