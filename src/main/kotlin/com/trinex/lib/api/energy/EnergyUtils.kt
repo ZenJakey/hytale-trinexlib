@@ -48,10 +48,16 @@ object EnergyUtils {
         val byComponent: MutableMap<EnergyComponent, Long>,
     )
 
+    private data class NetworkProcessCache(
+        var tick: Long,
+        val processed: MutableSet<EnergyNetwork>,
+    )
+
     private val networkCacheByWorld = java.util.WeakHashMap<World, NetworkCache>()
     private val pathCacheByWorld = java.util.WeakHashMap<World, PathCache>()
     private val providerOutputCacheByWorld = java.util.WeakHashMap<World, ProviderOutputCache>()
     private val receiveCapacityCacheByWorld = java.util.WeakHashMap<World, ReceiveCapacityCache>()
+    private val processedNetworksByWorld = java.util.WeakHashMap<World, NetworkProcessCache>()
 
     fun getAdjacentEnergyComponents(
         energyComponent: EnergyComponent,
@@ -118,8 +124,9 @@ object EnergyUtils {
 
         cache.byComponent[energyComponent]?.let { return it }
 
+        val neighbors = getAdjacentEnergyComponents(energyComponent, wc, commandBuffer)
         val capacity =
-            getAdjacentEnergyComponents(energyComponent, wc, commandBuffer).sumOf { neighbor ->
+            neighbors.sumOf { neighbor ->
                 when (neighbor.deviceClassification) {
                     EnergyDeviceClassification.TRANSPORT,
                     EnergyDeviceClassification.PROVIDER,
@@ -179,6 +186,24 @@ object EnergyUtils {
         }
 
         return network
+    }
+
+    fun markNetworkProcessed(
+        world: World,
+        network: EnergyNetwork,
+    ): Boolean {
+        val worldTick = world.tick
+        val cache = processedNetworksByWorld.getOrPut(world) { NetworkProcessCache(-1L, mutableSetOf()) }
+        if (cache.tick != worldTick) {
+            cache.tick = worldTick
+            cache.processed.clear()
+        }
+
+        if (cache.processed.contains(network)) {
+            return false
+        }
+        cache.processed.add(network)
+        return true
     }
 
     fun getPathGroups(

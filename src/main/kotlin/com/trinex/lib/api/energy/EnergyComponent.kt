@@ -23,8 +23,8 @@ class EnergyComponent(
     var storagePathOffset: Int = 0,
     var consumerRoundRobinOffset: Int = 0,
     var storageRoundRobinOffset: Int = 0,
-    var previousEnergy: Long = 0,
     var energyDeltaLastTick: Long = 0,
+    var lastEnergyDeltaTick: Long = -1,
 ) : Component<ChunkStore?> {
     override fun clone(): Component<ChunkStore?> =
         EnergyComponent(
@@ -41,8 +41,8 @@ class EnergyComponent(
             storagePathOffset,
             consumerRoundRobinOffset,
             storageRoundRobinOffset,
-            previousEnergy,
             energyDeltaLastTick,
+            lastEnergyDeltaTick,
         )
 
     // returns the "extra" amount not added to the source

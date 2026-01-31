@@ -12,10 +12,16 @@ import com.hypixel.hytale.server.core.universe.world.storage.ChunkStore
 import com.trinex.lib.TrinexLib
 import com.trinex.lib.api.device.EnergyDeviceTypeRegistry
 import kotlin.math.min
-import kotlin.math.max
 
 class EnergySystem : EntityTickingSystem<ChunkStore?>() {
     private val logger = HytaleLogger.forEnclosingClass()
+
+    private data class ProviderContext(
+        val provider: EnergyComponent,
+        val pathGroups: List<EnergyUtils.PathGroup>,
+        val groupCapacities: LongArray,
+        var remainingEnergy: Long,
+    )
 
     private data class DistributionState(
         val remainingEnergy: Long,
@@ -38,11 +44,12 @@ class EnergySystem : EntityTickingSystem<ChunkStore?>() {
 
         val groupCount = groups.size
         var remaining = remainingEnergy
-        var nextPathOffset = pathOffset % groupCount
+        val startPathOffset = pathOffset % groupCount
+        var nextPathOffset = startPathOffset
         var nextEndpointOffset = endpointOffset
 
         for (i in 0 until groupCount) {
-            val groupIndex = (nextPathOffset + i) % groupCount
+            val groupIndex = (startPathOffset + i) % groupCount
             val group = groups[groupIndex]
             val endpoints = endpointsSelector(group)
             if (endpoints.isEmpty()) continue
@@ -66,12 +73,13 @@ class EnergySystem : EntityTickingSystem<ChunkStore?>() {
                     val available = endpointCaps[idx]
                     if (available > 0) {
                         val toTry = min(groupRemaining, available)
-                        val remainder = endpoints[idx].component.addEnergy(toTry)
+                        val endpoint = endpoints[idx].component
+                        val remainder = endpoint.addEnergy(toTry)
                         val sent = toTry - remainder
                         if (sent > 0) {
                             endpointCaps[idx] = available - sent
-                            val component = endpoints[idx].component
-                            endpointRemaining[component] = (endpointRemaining[component] ?: 0L) - sent
+                            endpointRemaining[endpoint] = (endpointRemaining[endpoint] ?: 0L) - sent
+                            endpoint.energyDeltaLastTick += sent
                             groupRemaining -= sent
                             remaining -= sent
                             sentAny = true
@@ -97,20 +105,136 @@ class EnergySystem : EntityTickingSystem<ChunkStore?>() {
     }
 
     private fun buildEndpointRemaining(
-        groups: List<EnergyUtils.PathGroup>,
+        endpoints: Collection<EnergyComponent>,
         wc: WorldChunk,
         commandBuffer: CommandBuffer<ChunkStore?>,
-        endpointsSelector: (EnergyUtils.PathGroup) -> List<EnergyUtils.PathEndpoint>,
     ): MutableMap<EnergyComponent, Long> {
         val remaining = mutableMapOf<EnergyComponent, Long>()
-        for (group in groups) {
-            for (endpoint in endpointsSelector(group)) {
-                if (remaining.containsKey(endpoint.component)) continue
-                val capacity = EnergyUtils.getReceiveCapacity(endpoint.component, wc, commandBuffer)
-                remaining[endpoint.component] = capacity
-            }
+        for (endpoint in endpoints) {
+            val capacity = EnergyUtils.getReceiveCapacity(endpoint, wc, commandBuffer)
+            remaining[endpoint] = capacity
         }
         return remaining
+    }
+
+    private fun resetNetworkDelta(
+        component: EnergyComponent,
+        worldTick: Long,
+    ) {
+        if (component.lastEnergyDeltaTick != worldTick) {
+            component.energyDeltaLastTick = 0
+            component.lastEnergyDeltaTick = worldTick
+        }
+    }
+
+    private fun processNetwork(
+        network: EnergyUtils.EnergyNetwork,
+        wc: WorldChunk,
+        commandBuffer: CommandBuffer<ChunkStore?>,
+    ) {
+        val world = wc.world ?: return
+        val worldTick = world.tick
+        for (components in network.byClassification.values) {
+            for (component in components) {
+                resetNetworkDelta(component, worldTick)
+            }
+        }
+
+        val providers = network.byClassification[EnergyDeviceClassification.PROVIDER].orEmpty()
+        val consumers = network.byClassification[EnergyDeviceClassification.CONSUMER].orEmpty()
+        val storages = network.byClassification[EnergyDeviceClassification.STORAGE].orEmpty()
+        if (providers.isEmpty() && storages.isEmpty()) return
+
+        val consumerRemaining = buildEndpointRemaining(consumers, wc, commandBuffer)
+        val storageRemaining = buildEndpointRemaining(storages, wc, commandBuffer)
+
+        val providerContexts =
+            providers.map { provider ->
+                val pathGroups = EnergyUtils.getPathGroups(provider, wc, commandBuffer)
+                val groupCapacities = LongArray(pathGroups.size) { idx -> pathGroups[idx].capacity }
+                val maxOutput = pathGroups.sumOf { it.capacity }
+                val remainingEnergy = min(provider.energy, maxOutput)
+                ProviderContext(provider, pathGroups, groupCapacities, remainingEnergy)
+            }
+
+        for (context in providerContexts) {
+            if (context.remainingEnergy <= 0) continue
+            val initialOutput = context.remainingEnergy
+                val consumerState =
+                    distributeAlongPaths(
+                        context.pathGroups,
+                        context.remainingEnergy,
+                        context.provider.consumerPathOffset,
+                        context.provider.consumerRoundRobinOffset,
+                        context.groupCapacities,
+                        consumerRemaining,
+                    ) { it.consumers }
+            context.remainingEnergy = consumerState.remainingEnergy
+            context.provider.consumerPathOffset = consumerState.pathOffset
+            context.provider.consumerRoundRobinOffset = consumerState.endpointOffset
+
+            val sent = initialOutput - context.remainingEnergy
+            if (sent > 0) {
+                context.provider.removeEnergy(sent)
+                context.provider.energyDeltaLastTick -= sent
+            }
+        }
+
+        val consumerRemainingTotal = consumerRemaining.values.sum()
+        if (consumerRemainingTotal > 0) {
+            for (storage in storages) {
+                val pathGroups = EnergyUtils.getPathGroups(storage, wc, commandBuffer)
+                if (pathGroups.isEmpty()) continue
+                val groupCapacities = LongArray(pathGroups.size) { idx -> pathGroups[idx].capacity }
+                val maxOutput = pathGroups.sumOf { it.capacity }
+                val remainingEnergy = min(storage.energy, maxOutput)
+                if (remainingEnergy <= 0) continue
+
+                val consumerState =
+                    distributeAlongPaths(
+                        pathGroups,
+                        remainingEnergy,
+                        storage.consumerPathOffset,
+                        storage.consumerRoundRobinOffset,
+                        groupCapacities,
+                        consumerRemaining,
+                    ) { it.consumers }
+                val sent = remainingEnergy - consumerState.remainingEnergy
+                if (sent > 0) {
+                    storage.removeEnergy(sent)
+                    storage.energyDeltaLastTick -= sent
+                }
+                storage.consumerPathOffset = consumerState.pathOffset
+                storage.consumerRoundRobinOffset = consumerState.endpointOffset
+                if (consumerRemaining.values.sum() <= 0) {
+                    break
+                }
+            }
+        } else {
+            for (context in providerContexts) {
+                if (context.remainingEnergy <= 0) continue
+                val storageState =
+                    distributeAlongPaths(
+                        context.pathGroups,
+                        context.remainingEnergy,
+                        context.provider.storagePathOffset,
+                        context.provider.storageRoundRobinOffset,
+                        context.groupCapacities,
+                        storageRemaining,
+                    ) { it.storages }
+                val sent = context.remainingEnergy - storageState.remainingEnergy
+                if (sent > 0) {
+                    context.provider.removeEnergy(sent)
+                    context.provider.energyDeltaLastTick -= sent
+                }
+                context.remainingEnergy = storageState.remainingEnergy
+                context.provider.storagePathOffset = storageState.pathOffset
+                context.provider.storageRoundRobinOffset = storageState.endpointOffset
+                if (storageRemaining.values.sum() <= 0) {
+                    break
+                }
+            }
+        }
     }
 
     override fun tick(
@@ -123,102 +247,21 @@ class EnergySystem : EntityTickingSystem<ChunkStore?>() {
         val energyComponent = archetypeChunk.getComponent(index, TrinexLib.get().energyComponentType) ?: return
         val stateInfo = archetypeChunk.getComponent(index, BlockModule.BlockStateInfo.getComponentType()) ?: return
         val wc = commandBuffer.getComponent(stateInfo.chunkRef, WorldChunk.getComponentType()) ?: return
-        when (energyComponent.deviceClassification) {
-            EnergyDeviceClassification.PROVIDER -> {
-                val pathGroups = EnergyUtils.getPathGroups(energyComponent, wc, commandBuffer)
-                val groupCapacities = LongArray(pathGroups.size) { idx -> pathGroups[idx].capacity }
-                val maxOutput = pathGroups.sumOf { it.capacity }
-                val actualOutput = min(energyComponent.energy, maxOutput)
-                var remainingEnergy = actualOutput
-                val consumerRemaining = buildEndpointRemaining(pathGroups, wc, commandBuffer) { it.consumers }
-
-                val consumerState =
-                    distributeAlongPaths(
-                        pathGroups,
-                        remainingEnergy,
-                        energyComponent.consumerPathOffset,
-                        energyComponent.consumerRoundRobinOffset,
-                        groupCapacities,
-                        consumerRemaining,
-                    ) { it.consumers }
-                remainingEnergy = consumerState.remainingEnergy
-                energyComponent.consumerPathOffset = consumerState.pathOffset
-                energyComponent.consumerRoundRobinOffset = consumerState.endpointOffset
-
-                if (remainingEnergy > 0) {
-                    val storageRemaining = buildEndpointRemaining(pathGroups, wc, commandBuffer) { it.storages }
-                    val storageState =
-                        distributeAlongPaths(
-                            pathGroups,
-                            remainingEnergy,
-                            energyComponent.storagePathOffset,
-                            energyComponent.storageRoundRobinOffset,
-                            groupCapacities,
-                            storageRemaining,
-                        ) { it.storages }
-                    remainingEnergy = storageState.remainingEnergy
-                    energyComponent.storagePathOffset = storageState.pathOffset
-                    energyComponent.storageRoundRobinOffset = storageState.endpointOffset
-                }
-
-                energyComponent.removeEnergy(actualOutput - remainingEnergy)
-            }
-
-            EnergyDeviceClassification.STORAGE -> {
-                val network = EnergyUtils.getNetwork(energyComponent, wc, commandBuffer)
-                val consumerDemand =
-                    network.byClassification[EnergyDeviceClassification.CONSUMER]?.sumOf {
-                        max(0, it.energyCapacity - it.energy)
-                    } ?: 0
-                val providerSupply =
-                    network.byClassification[EnergyDeviceClassification.PROVIDER]?.sumOf { provider ->
-                        val providerMaxOutput = EnergyUtils.getProviderMaxOutput(provider, wc, commandBuffer)
-                        min(provider.energy, providerMaxOutput)
-                    } ?: 0
-
-                if (consumerDemand > providerSupply) {
-                    val pathGroups = EnergyUtils.getPathGroups(energyComponent, wc, commandBuffer)
-                    val groupCapacities = LongArray(pathGroups.size) { idx -> pathGroups[idx].capacity }
-                    val maxOutput = pathGroups.sumOf { it.capacity }
-                    val actualOutput = min(energyComponent.energy, maxOutput)
-                    var remainingEnergy = actualOutput
-                    val consumerRemaining = buildEndpointRemaining(pathGroups, wc, commandBuffer) { it.consumers }
-
-                    val consumerState =
-                        distributeAlongPaths(
-                            pathGroups,
-                            remainingEnergy,
-                            energyComponent.consumerPathOffset,
-                            energyComponent.consumerRoundRobinOffset,
-                            groupCapacities,
-                            consumerRemaining,
-                        ) { it.consumers }
-                    remainingEnergy = consumerState.remainingEnergy
-                    energyComponent.consumerPathOffset = consumerState.pathOffset
-                    energyComponent.consumerRoundRobinOffset = consumerState.endpointOffset
-
-                    energyComponent.removeEnergy(actualOutput - remainingEnergy)
-                }
-            }
-
-            EnergyDeviceClassification.TRANSPORT,
-            EnergyDeviceClassification.CONSUMER,
-            EnergyDeviceClassification.NONE,
-            -> {}
+        val world = wc.world
+        if (world != null) {
+            resetNetworkDelta(energyComponent, world.tick)
         }
-
+        val network = EnergyUtils.getNetwork(energyComponent, wc, commandBuffer)
+        if (world != null && EnergyUtils.markNetworkProcessed(world, network)) {
+            processNetwork(network, wc, commandBuffer)
+        }
         val deviceType = energyComponent.deviceType
         val device = EnergyDeviceTypeRegistry.get(deviceType)
         if (device == null) {
             logger.atSevere().log("No device registered with DeviceType: $deviceType")
-            energyComponent.energyDeltaLastTick = energyComponent.energy - energyComponent.previousEnergy
-            energyComponent.previousEnergy = energyComponent.energy
             return
         }
         device.onTick(energyComponent, dt, index, archetypeChunk, store, commandBuffer)
-
-        energyComponent.energyDeltaLastTick = energyComponent.energy - energyComponent.previousEnergy
-        energyComponent.previousEnergy = energyComponent.energy
     }
 
     override fun getQuery(): Query<ChunkStore?> = Query.and(TrinexLib.get().energyComponentType)
