@@ -19,6 +19,12 @@ class EnergyComponent(
     var deviceType: String = "Default:Default",
     var deviceClassification: EnergyDeviceClassification = EnergyDeviceClassification.NONE,
     var blockPosition3d: Vector3i? = null,
+    var consumerPathOffset: Int = 0,
+    var storagePathOffset: Int = 0,
+    var consumerRoundRobinOffset: Int = 0,
+    var storageRoundRobinOffset: Int = 0,
+    var previousEnergy: Long = 0,
+    var energyDeltaLastTick: Long = 0,
 ) : Component<ChunkStore?> {
     override fun clone(): Component<ChunkStore?> =
         EnergyComponent(
@@ -31,6 +37,12 @@ class EnergyComponent(
             deviceType,
             deviceClassification,
             blockPosition3d,
+            consumerPathOffset,
+            storagePathOffset,
+            consumerRoundRobinOffset,
+            storageRoundRobinOffset,
+            previousEnergy,
+            energyDeltaLastTick,
         )
 
     // returns the "extra" amount not added to the source

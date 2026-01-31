@@ -13,6 +13,46 @@ import com.trinex.lib.TrinexLib
 object EnergyUtils {
     val logger = HytaleLogger.forEnclosingClass()
 
+    private data class NetworkCache(
+        var tick: Long,
+        val byComponent: MutableMap<EnergyComponent, EnergyNetwork>,
+    )
+
+    data class EnergyNetwork(
+        val byClassification: Map<EnergyDeviceClassification, Set<EnergyComponent>>,
+    )
+
+    data class PathEndpoint(
+        val component: EnergyComponent,
+        val maxTransfer: Long,
+    )
+
+    data class PathGroup(
+        val capacity: Long,
+        val consumers: List<PathEndpoint>,
+        val storages: List<PathEndpoint>,
+    )
+
+    private data class PathCache(
+        var tick: Long,
+        val bySource: MutableMap<EnergyComponent, List<PathGroup>>,
+    )
+
+    private data class ProviderOutputCache(
+        var tick: Long,
+        val byProvider: MutableMap<EnergyComponent, Long>,
+    )
+
+    private data class ReceiveCapacityCache(
+        var tick: Long,
+        val byComponent: MutableMap<EnergyComponent, Long>,
+    )
+
+    private val networkCacheByWorld = java.util.WeakHashMap<World, NetworkCache>()
+    private val pathCacheByWorld = java.util.WeakHashMap<World, PathCache>()
+    private val providerOutputCacheByWorld = java.util.WeakHashMap<World, ProviderOutputCache>()
+    private val receiveCapacityCacheByWorld = java.util.WeakHashMap<World, ReceiveCapacityCache>()
+
     fun getAdjacentEnergyComponents(
         energyComponent: EnergyComponent,
         wc: WorldChunk,
@@ -35,30 +75,86 @@ object EnergyUtils {
         y: Int,
         z: Int,
     ): Ref<ChunkStore?>? {
-        // skip unloaded chunks if you don’t want to load them
+        // skip unloaded chunks if you don't want to load them
         val chunk = world.getChunkIfInMemory(ChunkUtil.indexChunkFromBlock(x, z)) ?: return null
         return chunk.getBlockComponentEntity(x, y, z)
     }
 
-    fun getAllConnectedEnergyComponents(
+    fun getProviderMaxOutput(
         energyComponent: EnergyComponent,
         wc: WorldChunk,
         commandBuffer: CommandBuffer<ChunkStore?>,
-    ): Map<EnergyDeviceClassification, Set<EnergyComponent>> {
-        val resultMap = mutableMapOf<EnergyDeviceClassification, MutableSet<EnergyComponent>>()
+    ): Long {
+        val world = wc.world ?: return 0
+        val worldTick = world.tick
+        val cache = providerOutputCacheByWorld.getOrPut(world) { ProviderOutputCache(-1L, mutableMapOf()) }
+        if (cache.tick != worldTick) {
+            cache.tick = worldTick
+            cache.byProvider.clear()
+        }
+
+        cache.byProvider[energyComponent]?.let { return it }
+
+        val maxOutput =
+            getAdjacentEnergyComponents(energyComponent, wc, commandBuffer).sumOf {
+                minOf(energyComponent.transferSpeed, it.transferSpeed)
+            }
+        cache.byProvider[energyComponent] = maxOutput
+        return maxOutput
+    }
+
+    fun getReceiveCapacity(
+        energyComponent: EnergyComponent,
+        wc: WorldChunk,
+        commandBuffer: CommandBuffer<ChunkStore?>,
+    ): Long {
+        val world = wc.world ?: return 0
+        val worldTick = world.tick
+        val cache = receiveCapacityCacheByWorld.getOrPut(world) { ReceiveCapacityCache(-1L, mutableMapOf()) }
+        if (cache.tick != worldTick) {
+            cache.tick = worldTick
+            cache.byComponent.clear()
+        }
+
+        cache.byComponent[energyComponent]?.let { return it }
+
+        val capacity =
+            getAdjacentEnergyComponents(energyComponent, wc, commandBuffer).sumOf { neighbor ->
+                when (neighbor.deviceClassification) {
+                    EnergyDeviceClassification.TRANSPORT,
+                    EnergyDeviceClassification.PROVIDER,
+                    EnergyDeviceClassification.STORAGE,
+                    -> minOf(energyComponent.transferSpeed, neighbor.transferSpeed)
+                    else -> 0
+                }
+            }
+        cache.byComponent[energyComponent] = capacity
+        return capacity
+    }
+
+    fun getNetwork(
+        energyComponent: EnergyComponent,
+        wc: WorldChunk,
+        commandBuffer: CommandBuffer<ChunkStore?>,
+    ): EnergyNetwork {
+        val world = wc.world ?: return EnergyNetwork(emptyMap())
+        val worldTick = world.tick
+        val cache = networkCacheByWorld.getOrPut(world) { NetworkCache(-1L, mutableMapOf()) }
+        if (cache.tick != worldTick) {
+            cache.tick = worldTick
+            cache.byComponent.clear()
+        }
+
+        cache.byComponent[energyComponent]?.let { return it }
+
         val visited = mutableSetOf<EnergyComponent>()
-        val queue = mutableSetOf(energyComponent)
+        val queue = ArrayDeque<EnergyComponent>()
+        queue.add(energyComponent)
 
         while (queue.isNotEmpty()) {
-            val current = queue.first()
-            queue.remove(current)
-            visited.add(current)
+            val current = queue.removeFirst()
+            if (!visited.add(current)) continue
 
-            if (current != energyComponent) {
-                resultMap.getOrPut(current.deviceClassification) { mutableSetOf() }.add(current)
-            }
-
-            // Only traverse through TRANSPORT components
             val canExpand =
                 (current == energyComponent) ||
                     (current.deviceClassification == EnergyDeviceClassification.TRANSPORT)
@@ -72,6 +168,131 @@ object EnergyUtils {
             }
         }
 
+        val resultMap = mutableMapOf<EnergyDeviceClassification, MutableSet<EnergyComponent>>()
+        for (component in visited) {
+            resultMap.getOrPut(component.deviceClassification) { mutableSetOf() }.add(component)
+        }
+
+        val network = EnergyNetwork(resultMap)
+        for (component in visited) {
+            cache.byComponent[component] = network
+        }
+
+        return network
+    }
+
+    fun getPathGroups(
+        energyComponent: EnergyComponent,
+        wc: WorldChunk,
+        commandBuffer: CommandBuffer<ChunkStore?>,
+    ): List<PathGroup> {
+        val world = wc.world ?: return emptyList()
+        val worldTick = world.tick
+        val cache = pathCacheByWorld.getOrPut(world) { PathCache(-1L, mutableMapOf()) }
+        if (cache.tick != worldTick) {
+            cache.tick = worldTick
+            cache.bySource.clear()
+        }
+
+        cache.bySource[energyComponent]?.let { return it }
+
+        val groups = mutableListOf<PathGroup>()
+        val neighbors = getAdjacentEnergyComponents(energyComponent, wc, commandBuffer)
+        for (neighbor in neighbors) {
+            val capacity = minOf(energyComponent.transferSpeed, neighbor.transferSpeed)
+            if (capacity <= 0) continue
+            val group =
+                if (neighbor.deviceClassification != EnergyDeviceClassification.TRANSPORT) {
+                    buildDirectPathGroup(neighbor, capacity)
+                } else {
+                    buildTransportPathGroup(energyComponent, neighbor, capacity, wc, commandBuffer)
+                }
+            if (group != null && (group.consumers.isNotEmpty() || group.storages.isNotEmpty())) {
+                groups.add(group)
+            }
+        }
+
+        cache.bySource[energyComponent] = groups
+        return groups
+    }
+
+    fun getAllConnectedEnergyComponents(
+        energyComponent: EnergyComponent,
+        wc: WorldChunk,
+        commandBuffer: CommandBuffer<ChunkStore?>,
+    ): Map<EnergyDeviceClassification, Set<EnergyComponent>> {
+        val network = getNetwork(energyComponent, wc, commandBuffer)
+        val resultMap = mutableMapOf<EnergyDeviceClassification, MutableSet<EnergyComponent>>()
+        for ((classification, members) in network.byClassification) {
+            for (member in members) {
+                if (member != energyComponent) {
+                    resultMap.getOrPut(classification) { mutableSetOf() }.add(member)
+                }
+            }
+        }
+
         return resultMap
+    }
+
+    private fun buildDirectPathGroup(
+        neighbor: EnergyComponent,
+        capacity: Long,
+    ): PathGroup? {
+        val consumers = mutableListOf<PathEndpoint>()
+        val storages = mutableListOf<PathEndpoint>()
+        when (neighbor.deviceClassification) {
+            EnergyDeviceClassification.CONSUMER -> consumers.add(PathEndpoint(neighbor, capacity))
+            EnergyDeviceClassification.STORAGE -> storages.add(PathEndpoint(neighbor, capacity))
+            else -> return null
+        }
+        return PathGroup(capacity, consumers, storages)
+    }
+
+    private fun buildTransportPathGroup(
+        source: EnergyComponent,
+        start: EnergyComponent,
+        capacity: Long,
+        wc: WorldChunk,
+        commandBuffer: CommandBuffer<ChunkStore?>,
+    ): PathGroup? {
+        val endpointLimits = mutableMapOf<EnergyComponent, Long>()
+        val visitedTransports = mutableSetOf<EnergyComponent>()
+        val queue = ArrayDeque<Pair<EnergyComponent, Long>>()
+        queue.add(start to capacity)
+        visitedTransports.add(start)
+
+        while (queue.isNotEmpty()) {
+            val (current, currentLimit) = queue.removeFirst()
+            val neighbors = getAdjacentEnergyComponents(current, wc, commandBuffer)
+            for (neighbor in neighbors) {
+                if (neighbor == source) continue
+                val nextLimit = minOf(currentLimit, neighbor.transferSpeed)
+                if (neighbor.deviceClassification == EnergyDeviceClassification.TRANSPORT) {
+                    if (visitedTransports.add(neighbor)) {
+                        queue.add(neighbor to nextLimit)
+                    }
+                } else {
+                    val existing = endpointLimits[neighbor]
+                    if (existing == null || nextLimit > existing) {
+                        endpointLimits[neighbor] = nextLimit
+                    }
+                }
+            }
+        }
+
+        if (endpointLimits.isEmpty()) return null
+
+        val consumers = mutableListOf<PathEndpoint>()
+        val storages = mutableListOf<PathEndpoint>()
+        for ((endpoint, limit) in endpointLimits) {
+            if (limit <= 0) continue
+            when (endpoint.deviceClassification) {
+                EnergyDeviceClassification.CONSUMER -> consumers.add(PathEndpoint(endpoint, limit))
+                EnergyDeviceClassification.STORAGE -> storages.add(PathEndpoint(endpoint, limit))
+                else -> {}
+            }
+        }
+
+        return PathGroup(capacity, consumers, storages)
     }
 }
