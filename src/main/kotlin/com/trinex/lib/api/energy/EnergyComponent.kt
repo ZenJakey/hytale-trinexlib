@@ -5,29 +5,32 @@ import com.hypixel.hytale.codec.KeyedCodec
 import com.hypixel.hytale.codec.builder.BuilderCodec
 import com.hypixel.hytale.component.Component
 import com.hypixel.hytale.component.ComponentType
+import com.hypixel.hytale.math.vector.Vector3i
 import com.hypixel.hytale.server.core.universe.world.storage.ChunkStore
 import com.trinex.lib.TrinexLib
 
 class EnergyComponent(
     var transferSpeed: Long = 256,
-    var energyCapacity: Long = 1024,
+    var energyCapacity: Long = 0,
     var energy: Long = 0,
-    var energyGenerationRatePerSecond: Long = 0,
-    var energyConsumptionRatePerSecond: Long = 0,
+    var energyGenerationPerTick: Long = 0,
+    var energyConsumptionPerTick: Long = 0,
     var isActive: Boolean = false,
-    var deviceType: String = "",
-    var isProvider: Boolean = false,
+    var deviceType: String = "Default:Default",
+    var deviceClassification: EnergyDeviceClassification = EnergyDeviceClassification.NONE,
+    var blockPosition3d: Vector3i? = null,
 ) : Component<ChunkStore?> {
     override fun clone(): Component<ChunkStore?> =
         EnergyComponent(
             transferSpeed,
             energyCapacity,
             energy,
-            energyGenerationRatePerSecond,
-            energyConsumptionRatePerSecond,
+            energyGenerationPerTick,
+            energyConsumptionPerTick,
             isActive,
             deviceType,
-            isProvider,
+            deviceClassification,
+            blockPosition3d,
         )
 
     // returns the "extra" amount not added to the source
@@ -67,14 +70,14 @@ class EnergyComponent(
                     { d -> d.energy },
                 ).add()
                 .append(
-                    KeyedCodec("EnergyGenerationRatePerSecond", Codec.LONG),
-                    { d, v -> d.energyGenerationRatePerSecond = v },
-                    { d -> d.energyGenerationRatePerSecond },
+                    KeyedCodec("EnergyGenerationPerTick", Codec.LONG),
+                    { d, v -> d.energyGenerationPerTick = v },
+                    { d -> d.energyGenerationPerTick },
                 ).add()
                 .append(
-                    KeyedCodec("EnergyConsumptionRatePerSecond", Codec.LONG),
-                    { d, v -> d.energyConsumptionRatePerSecond = v },
-                    { d -> d.energyConsumptionRatePerSecond },
+                    KeyedCodec("EnergyConsumptionPerTick", Codec.LONG),
+                    { d, v -> d.energyConsumptionPerTick = v },
+                    { d -> d.energyConsumptionPerTick },
                 ).add()
                 .append(
                     KeyedCodec("IsActive", Codec.BOOLEAN),
@@ -87,9 +90,14 @@ class EnergyComponent(
                     { d -> d.deviceType },
                 ).add()
                 .append(
-                    KeyedCodec("IsProvider", Codec.BOOLEAN),
-                    { d, v -> d.isProvider = v },
-                    { d -> d.isProvider },
+                    KeyedCodec("DeviceClassification", Codec.STRING),
+                    { d, v -> d.deviceClassification = EnergyDeviceClassification.valueOf(v) },
+                    { d -> d.deviceClassification.name },
+                ).add()
+                .append(
+                    KeyedCodec("BlockPosition3d", Vector3i.CODEC),
+                    { d, v -> d.blockPosition3d = v },
+                    { d -> d.blockPosition3d },
                 ).add()
                 .build()
     }
