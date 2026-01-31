@@ -16,6 +16,7 @@ class EnergyComponent(
     var energyConsumptionRatePerSecond: Long = 0,
     var isActive: Boolean = false,
     var deviceType: String = "",
+    var isProvider: Boolean = false,
 ) : Component<ChunkStore?> {
     override fun clone(): Component<ChunkStore?> =
         EnergyComponent(
@@ -26,6 +27,7 @@ class EnergyComponent(
             energyConsumptionRatePerSecond,
             isActive,
             deviceType,
+            isProvider,
         )
 
     // returns the "extra" amount not added to the source
@@ -83,6 +85,11 @@ class EnergyComponent(
                     KeyedCodec("DeviceType", Codec.STRING),
                     { d, v -> d.deviceType = v },
                     { d -> d.deviceType },
+                ).add()
+                .append(
+                    KeyedCodec("IsProvider", Codec.BOOLEAN),
+                    { d, v -> d.isProvider = v },
+                    { d -> d.isProvider },
                 ).add()
                 .build()
     }
