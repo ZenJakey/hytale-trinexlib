@@ -66,12 +66,21 @@ object EnergyUtils {
     ): Set<EnergyComponent> =
         buildSet {
             val world = wc.world ?: return@buildSet
+            val positions = energyComponent.occupiedPositions?.takeIf { it.isNotEmpty() }
+                ?: energyComponent.blockPosition3d?.let { setOf(it) }
+                ?: emptySet()
+            val portPositions = energyComponent.portPositions
 
-            for (dir in Vector3i.BLOCK_SIDES) {
-                val pos = energyComponent.blockPosition3d?.clone()?.add(dir) ?: continue
-                val neighborRef = getBlockComponentEntityAtWorldPos(world, pos.x, pos.y, pos.z) ?: continue
-                val neighborEnergy = commandBuffer.getComponent(neighborRef, TrinexLib.get().energyComponentType) ?: continue
-                add(neighborEnergy)
+            for (basePos in positions) {
+                if (portPositions != null && !portPositions.contains(basePos)) continue
+                for (dir in Vector3i.BLOCK_SIDES) {
+                    val pos = basePos.clone().add(dir)
+                    val neighborRef = getBlockComponentEntityAtWorldPos(world, pos.x, pos.y, pos.z) ?: continue
+                    val neighborEnergy =
+                        commandBuffer.getComponent(neighborRef, TrinexLib.get().energyComponentType) ?: continue
+                    if (neighborEnergy == energyComponent) continue
+                    add(neighborEnergy)
+                }
             }
         }
 

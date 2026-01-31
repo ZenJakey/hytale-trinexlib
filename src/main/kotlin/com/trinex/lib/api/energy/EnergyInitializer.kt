@@ -10,6 +10,7 @@ import com.hypixel.hytale.component.system.RefSystem
 import com.hypixel.hytale.math.util.ChunkUtil
 import com.hypixel.hytale.math.vector.Vector3i
 import com.hypixel.hytale.server.core.modules.block.BlockModule
+import com.hypixel.hytale.server.core.universe.world.World
 import com.hypixel.hytale.server.core.universe.world.chunk.WorldChunk
 import com.hypixel.hytale.server.core.universe.world.storage.ChunkStore
 import com.trinex.lib.TrinexLib
@@ -32,6 +33,8 @@ class EnergyInitializer : RefSystem<ChunkStore?>() {
 
         val vector = Vector3i(x, y, z)
         energyComponent.blockPosition3d = vector
+        val world = wc.world ?: return
+        energyComponent.occupiedPositions = collectOccupiedPositions(world, vector, p0)
     }
 
     override fun onEntityRemove(
@@ -42,4 +45,40 @@ class EnergyInitializer : RefSystem<ChunkStore?>() {
     ) {}
 
     override fun getQuery(): Query<ChunkStore?> = Query.and(TrinexLib.get().energyComponentType)
+
+    private fun collectOccupiedPositions(
+        world: World,
+        origin: Vector3i,
+        targetRef: Ref<ChunkStore?>,
+    ): MutableSet<Vector3i> {
+        val visited = mutableSetOf<Vector3i>()
+        val queue = ArrayDeque<Vector3i>()
+        queue.add(origin)
+
+        while (queue.isNotEmpty()) {
+            val current = queue.removeFirst()
+            if (!visited.add(current)) continue
+
+            for (dir in Vector3i.BLOCK_SIDES) {
+                val neighborPos = current.clone().add(dir)
+                val neighborRef = getBlockComponentEntityAtWorldPos(world, neighborPos.x, neighborPos.y, neighborPos.z) ?: continue
+                if (neighborRef != targetRef) continue
+                if (!visited.contains(neighborPos)) {
+                    queue.add(neighborPos)
+                }
+            }
+        }
+
+        return visited
+    }
+
+    private fun getBlockComponentEntityAtWorldPos(
+        world: World,
+        x: Int,
+        y: Int,
+        z: Int,
+    ): Ref<ChunkStore?>? {
+        val chunk = world.getChunkIfInMemory(ChunkUtil.indexChunkFromBlock(x, z)) ?: return null
+        return chunk.getBlockComponentEntity(x, y, z)
+    }
 }

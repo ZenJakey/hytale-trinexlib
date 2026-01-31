@@ -3,11 +3,13 @@ package com.trinex.lib.api.energy
 import com.hypixel.hytale.codec.Codec
 import com.hypixel.hytale.codec.KeyedCodec
 import com.hypixel.hytale.codec.builder.BuilderCodec
+import com.hypixel.hytale.codec.codecs.array.ArrayCodec
 import com.hypixel.hytale.component.Component
 import com.hypixel.hytale.component.ComponentType
 import com.hypixel.hytale.math.vector.Vector3i
 import com.hypixel.hytale.server.core.universe.world.storage.ChunkStore
 import com.trinex.lib.TrinexLib
+import java.util.function.IntFunction
 
 class EnergyComponent(
     var transferSpeed: Long = 256,
@@ -19,6 +21,8 @@ class EnergyComponent(
     var deviceType: String = "Default:Default",
     var deviceClassification: EnergyDeviceClassification = EnergyDeviceClassification.NONE,
     var blockPosition3d: Vector3i? = null,
+    var occupiedPositions: MutableSet<Vector3i>? = null,
+    var portPositions: Set<Vector3i>? = null,
     var consumerPathOffset: Int = 0,
     var storagePathOffset: Int = 0,
     var consumerRoundRobinOffset: Int = 0,
@@ -37,6 +41,8 @@ class EnergyComponent(
             deviceType,
             deviceClassification,
             blockPosition3d,
+            occupiedPositions,
+            portPositions,
             consumerPathOffset,
             storagePathOffset,
             consumerRoundRobinOffset,
@@ -111,6 +117,15 @@ class EnergyComponent(
                     { d, v -> d.blockPosition3d = v },
                     { d -> d.blockPosition3d },
                 ).add()
+                .append(
+                    KeyedCodec("PortPositions", ArrayCodec(Vector3i.CODEC, IntFunction { size -> vector3iArray(size) })),
+                    { d, v -> d.portPositions = v?.toSet() },
+                    { d -> d.portPositions?.toTypedArray() },
+                ).add()
                 .build()
+
+        @Suppress("UNCHECKED_CAST")
+        private fun vector3iArray(size: Int): Array<Vector3i> =
+            java.lang.reflect.Array.newInstance(Vector3i::class.java, size) as Array<Vector3i>
     }
 }
