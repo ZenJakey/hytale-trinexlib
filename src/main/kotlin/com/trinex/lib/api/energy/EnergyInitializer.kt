@@ -34,6 +34,12 @@ class EnergyInitializer : RefSystem<ChunkStore?>() {
         val vector = Vector3i(x, y, z)
         energyComponent.blockPosition3d = vector
         val world = wc.world ?: return
+        if (energyComponent.networkId.isBlank()) {
+            val blockType = wc.getBlockType(x, y, z)
+            if (blockType != null) {
+                energyComponent.networkId = blockType.id
+            }
+        }
         energyComponent.occupiedPositions = collectOccupiedPositions(world, vector, p0)
     }
 

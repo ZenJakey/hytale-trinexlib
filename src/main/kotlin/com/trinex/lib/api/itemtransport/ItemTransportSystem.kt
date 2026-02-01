@@ -173,12 +173,17 @@ class ItemTransportSystem : EntityTickingSystem<ChunkStore?>() {
 
             val ids = filter?.ids.orEmpty()
             if (ids.isNotEmpty()) {
-                for (id in ids) {
+                val exactIds = ids.filterNot { ItemFilter.isWildcardPattern(it) }
+                val hasWildcard = exactIds.size != ids.size
+                for (id in exactIds) {
                     if (endpointState.remaining <= 0) break
-                    val metadata = if (filter?.matchMetadata == true) filter.metadataById[id] else null
+                    val metadata = if (filter?.matchMetadata == true) filter.findMetadataForId(id) else null
                     val template = ItemStack(id, 1, metadata)
                     val matchMetadata = filter?.matchMetadata == true && metadata != null
                     requests.add(ItemRequest(endpointState, template, matchMetadata, endpointState.remaining))
+                }
+                if (hasWildcard) {
+                    requests.add(ItemRequest(endpointState, null, false, endpointState.remaining))
                 }
                 continue
             }
@@ -295,9 +300,17 @@ class ItemTransportSystem : EntityTickingSystem<ChunkStore?>() {
     ): Boolean {
         val template = request.template ?: return true
         return if (request.matchMetadata) {
-            stack.isEquivalentType(template)
+            @Suppress("DEPRECATION")
+            val templateMeta = template.metadata
+            @Suppress("DEPRECATION")
+            val stackMeta = stack.metadata
+            if (templateMeta == null) {
+                stack.itemId.equals(template.itemId, ignoreCase = true)
+            } else {
+                stack.itemId.equals(template.itemId, ignoreCase = true) && templateMeta == stackMeta
+            }
         } else {
-            stack.itemId == template.itemId
+            stack.itemId.equals(template.itemId, ignoreCase = true)
         }
     }
 

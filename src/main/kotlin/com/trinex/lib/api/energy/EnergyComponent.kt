@@ -18,6 +18,7 @@ class EnergyComponent(
     var energyGenerationPerTick: Long = 0,
     var energyConsumptionPerTick: Long = 0,
     var isActive: Boolean = false,
+    var networkId: String = "",
     var deviceType: String = "Default:Default",
     var deviceClassification: EnergyDeviceClassification = EnergyDeviceClassification.NONE,
     var blockPosition3d: Vector3i? = null,
@@ -38,6 +39,7 @@ class EnergyComponent(
             energyGenerationPerTick,
             energyConsumptionPerTick,
             isActive,
+            networkId,
             deviceType,
             deviceClassification,
             blockPosition3d,
@@ -101,6 +103,11 @@ class EnergyComponent(
                     KeyedCodec("IsActive", Codec.BOOLEAN),
                     { d, v -> d.isActive = v },
                     { d -> d.isActive },
+                ).add()
+                .append(
+                    KeyedCodec("NetworkId", Codec.STRING),
+                    { d, v -> d.networkId = v },
+                    { d -> d.networkId },
                 ).add()
                 .append(
                     KeyedCodec("DeviceType", Codec.STRING),

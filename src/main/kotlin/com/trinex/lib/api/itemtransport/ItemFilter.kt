@@ -24,21 +24,59 @@ data class ItemFilter(
 
     fun matches(stack: ItemStack): Boolean {
         val itemId = stack.itemId
-        if (!ids.contains(itemId)) {
-            return false
+        val matchedId = findMatchingId(itemId) ?: return false
+        if (isWildcardPattern(matchedId)) {
+            return true
         }
         if (!matchMetadata) {
             return true
         }
-        val expectedMeta = metadataById[itemId] ?: return true
+        val expectedMeta = findMetadataForId(matchedId) ?: return true
 
         @Suppress("DEPRECATION")
         val actualMeta = stack.metadata
         return expectedMeta == actualMeta
     }
 
+    fun findMetadataForId(id: String): BsonDocument? {
+        for ((key, value) in metadataById) {
+            if (key.equals(id, ignoreCase = true)) {
+                return value
+            }
+        }
+        return null
+    }
+
+    private fun findMatchingId(itemId: String): String? {
+        for (id in ids) {
+            if (id.equals(itemId, ignoreCase = true)) {
+                return id
+            }
+        }
+        for (id in ids) {
+            if (!isWildcardPattern(id)) continue
+            if (globMatches(id, itemId)) {
+                return id
+            }
+        }
+        return null
+    }
+
+    private fun globMatches(pattern: String, value: String): Boolean {
+        val regex =
+            "^" +
+                Regex
+                    .escape(pattern.lowercase())
+                    .replace("\\*", ".*")
+                    .replace("\\?", ".") +
+                "$"
+        return Regex(regex).matches(value.lowercase())
+    }
+
     companion object {
         val ALLOW_ALL = ItemFilter(mode = ItemFilterMode.BLACKLIST)
+
+        fun isWildcardPattern(id: String): Boolean = id.indexOf('*') >= 0 || id.indexOf('?') >= 0
 
         val CODEC =
             BuilderCodec

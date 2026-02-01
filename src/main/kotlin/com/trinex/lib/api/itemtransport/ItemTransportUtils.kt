@@ -58,6 +58,7 @@ object ItemTransportUtils {
     ): Set<ItemTransportComponent> =
         buildSet {
             val world = wc.world ?: return@buildSet
+            val networkId = transport.networkId
             val positions =
                 transport.occupiedPositions?.takeIf { it.isNotEmpty() }
                     ?: transport.blockPosition3d?.let { setOf(it) }
@@ -72,6 +73,7 @@ object ItemTransportUtils {
                     val neighbor =
                         commandBuffer.getComponent(neighborRef, TrinexLib.get().itemTransportComponentType) ?: continue
                     if (neighbor == transport) continue
+                    if (neighbor.networkId != networkId) continue
                     add(neighbor)
                 }
             }

@@ -16,6 +16,7 @@ import java.util.function.IntFunction
 class ItemTransportComponent(
     var itemsPerSecond: Int = 16,
     var transferBuffer: Double = 0.0,
+    var networkId: String = "",
     var blockPosition3d: Vector3i? = null,
     var occupiedPositions: MutableSet<Vector3i>? = null,
     var portPositions: Set<Vector3i>? = null,
@@ -28,6 +29,7 @@ class ItemTransportComponent(
         ItemTransportComponent(
             itemsPerSecond,
             transferBuffer,
+            networkId,
             blockPosition3d,
             occupiedPositions?.toMutableSet(),
             portPositions?.toSet(),
@@ -111,6 +113,11 @@ class ItemTransportComponent(
                     KeyedCodec("TransferBuffer", Codec.DOUBLE),
                     { d, v -> d.transferBuffer = v },
                     { d -> d.transferBuffer },
+                ).add()
+                .append(
+                    KeyedCodec("NetworkId", Codec.STRING),
+                    { d, v -> d.networkId = v },
+                    { d -> d.networkId },
                 ).add()
                 .append(
                     KeyedCodec("BlockPosition3d", Vector3i.CODEC),

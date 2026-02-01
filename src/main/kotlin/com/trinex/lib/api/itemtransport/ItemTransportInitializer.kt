@@ -37,6 +37,12 @@ class ItemTransportInitializer : RefSystem<ChunkStore?>() {
         val vector = Vector3i(x, y, z)
         transport.blockPosition3d = vector
         val world = wc.world ?: return
+        if (transport.networkId.isBlank()) {
+            val blockType = wc.getBlockType(x, y, z)
+            if (blockType != null) {
+                transport.networkId = blockType.id
+            }
+        }
         transport.occupiedPositions = collectOccupiedPositions(world, vector, p0)
         logNeighborComponents(world, vector, p3)
     }

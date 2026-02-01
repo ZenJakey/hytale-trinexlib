@@ -66,6 +66,7 @@ object EnergyUtils {
     ): Set<EnergyComponent> =
         buildSet {
             val world = wc.world ?: return@buildSet
+            val networkId = energyComponent.networkId
             val positions = energyComponent.occupiedPositions?.takeIf { it.isNotEmpty() }
                 ?: energyComponent.blockPosition3d?.let { setOf(it) }
                 ?: emptySet()
@@ -79,6 +80,7 @@ object EnergyUtils {
                     val neighborEnergy =
                         commandBuffer.getComponent(neighborRef, TrinexLib.get().energyComponentType) ?: continue
                     if (neighborEnergy == energyComponent) continue
+                    if (neighborEnergy.networkId != networkId) continue
                     add(neighborEnergy)
                 }
             }
