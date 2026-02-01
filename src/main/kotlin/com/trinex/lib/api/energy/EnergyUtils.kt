@@ -80,7 +80,13 @@ object EnergyUtils {
                     val neighborEnergy =
                         commandBuffer.getComponent(neighborRef, TrinexLib.get().energyComponentType) ?: continue
                     if (neighborEnergy == energyComponent) continue
-                    if (neighborEnergy.networkId != networkId) continue
+                    if (
+                        energyComponent.deviceClassification == EnergyDeviceClassification.TRANSPORT &&
+                        neighborEnergy.deviceClassification == EnergyDeviceClassification.TRANSPORT &&
+                        neighborEnergy.networkId != networkId
+                    ) {
+                        continue
+                    }
                     add(neighborEnergy)
                 }
             }
