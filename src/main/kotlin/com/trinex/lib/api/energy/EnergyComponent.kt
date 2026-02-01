@@ -15,8 +15,6 @@ class EnergyComponent(
     var transferSpeed: Long = 256,
     var energyCapacity: Long = 0,
     var energy: Long = 0,
-    var energyGenerationPerTick: Long = 0,
-    var energyConsumptionPerTick: Long = 0,
     var isActive: Boolean = false,
     var networkId: String = "",
     var deviceType: String = "Default:Default",
@@ -36,8 +34,6 @@ class EnergyComponent(
             transferSpeed,
             energyCapacity,
             energy,
-            energyGenerationPerTick,
-            energyConsumptionPerTick,
             isActive,
             networkId,
             deviceType,
@@ -90,16 +86,6 @@ class EnergyComponent(
                     { d -> d.energy },
                 ).add()
                 .append(
-                    KeyedCodec("EnergyGenerationPerTick", Codec.LONG),
-                    { d, v -> d.energyGenerationPerTick = v },
-                    { d -> d.energyGenerationPerTick },
-                ).add()
-                .append(
-                    KeyedCodec("EnergyConsumptionPerTick", Codec.LONG),
-                    { d, v -> d.energyConsumptionPerTick = v },
-                    { d -> d.energyConsumptionPerTick },
-                ).add()
-                .append(
                     KeyedCodec("IsActive", Codec.BOOLEAN),
                     { d, v -> d.isActive = v },
                     { d -> d.isActive },
@@ -133,6 +119,7 @@ class EnergyComponent(
 
         @Suppress("UNCHECKED_CAST")
         private fun vector3iArray(size: Int): Array<Vector3i> =
-            java.lang.reflect.Array.newInstance(Vector3i::class.java, size) as Array<Vector3i>
+            java.lang.reflect.Array
+                .newInstance(Vector3i::class.java, size) as Array<Vector3i>
     }
 }
