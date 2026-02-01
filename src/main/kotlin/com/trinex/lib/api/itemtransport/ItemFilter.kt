@@ -63,14 +63,17 @@ data class ItemFilter(
     }
 
     private fun globMatches(pattern: String, value: String): Boolean {
-        val regex =
-            "^" +
-                Regex
-                    .escape(pattern.lowercase())
-                    .replace("\\*", ".*")
-                    .replace("\\?", ".") +
-                "$"
-        return Regex(regex).matches(value.lowercase())
+        val regexBody = buildString(pattern.length * 2) {
+            for (ch in pattern) {
+                when (ch) {
+                    '*' -> append(".*")
+                    '?' -> append('.')
+                    else -> append(Regex.escape(ch.toString()))
+                }
+            }
+        }
+        val regex = "^$regexBody$"
+        return Regex(regex, RegexOption.IGNORE_CASE).matches(value)
     }
 
     companion object {
