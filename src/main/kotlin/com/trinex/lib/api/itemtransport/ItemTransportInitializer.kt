@@ -44,7 +44,7 @@ class ItemTransportInitializer : RefSystem<ChunkStore?>() {
             }
         }
         transport.occupiedPositions = collectOccupiedPositions(world, vector, p0)
-        logNeighborComponents(world, vector, p3)
+        // logNeighborComponents(world, vector, p3)
     }
 
     override fun onEntityRemove(
